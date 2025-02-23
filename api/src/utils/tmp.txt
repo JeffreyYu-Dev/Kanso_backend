@@ -1,0 +1,58 @@
+// TODO: add other servers and subbed and dubbed
+// TODO: TO USE THE EPISODE ARRAY YOU WILL NEED TO RETRIEVAL so that the episodes are in order if not, episodes are out of order
+// TODO: MAYBE ADD QUICKSORT TO THIS SO ITLL AUTOMATICALLY BE SORTED
+// NEED TO CHECK IF SHOW AND EPISODE EXIST BEFORE GETTING FROM SOURCE
+export async function get_episode(show_id: number, episode_number: number) {
+  // check if the episode exist
+  // we can find it based on the show_id(anilist id) and episode number
+  const episode_res = await episode.findOne({
+    show_id: show_id.toString(),
+    number: episode_number.toString(),
+  });
+
+  // return episode data if it exist
+  if (episode_res) {
+    console.log("Retrieved episode from database");
+    return episode_res;
+  }
+
+  // else...
+
+  const data = await ky
+    .get(
+      `${baseUrl}/show/${show_id.toString()}/episode/${episode_number.toString()}`
+    )
+    .json();
+
+  // if there is no database
+  // TODO: make this better
+  if (!data) return "NO DATA FOUND WTF";
+
+  // add episode to database
+  const ep = new episode(data);
+  await ep.save().then(() => {
+    console.log(
+      `Successfully added episode ${episode_number.toString()} for show ${show_id.toString()}`
+    );
+  });
+
+  // add episode to show collection ref
+  const ref_key = {
+    show_id: show_id,
+    episode_number: episode_number,
+  };
+
+  // add key to episodes array
+  await show.updateOne(
+    { "external_id.anilist": show_id.toString() },
+    {
+      $push: {
+        "episodes.data.aniwatch.subbed": {
+          ref_key,
+        },
+      },
+    }
+  );
+
+  return ep;
+}
