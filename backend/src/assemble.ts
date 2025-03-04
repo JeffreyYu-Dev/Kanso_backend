@@ -112,6 +112,13 @@ export default class assemble {
     // check if episode exists
     // const episode_in_database = await episode.find()
 
+    // first check if we have show
+    const show = show_model.findOne({ "external_id.anilist": params.show_id });
+
+    // build show if it doesn't exist
+    if (!show) await this.aggregator.aggregate_show(params.show_id);
+
+    // then add episode
     const episode: any = await this.aggregator.get_direct_episode(params);
 
     // TODO: FIX THIS
