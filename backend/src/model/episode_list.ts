@@ -1,31 +1,34 @@
 import mongoose from "mongoose";
 const { Schema, model } = mongoose;
 
-const episode_list = new Schema(
+const provider_format = {
+  sub: [
+    {
+      _id: { type: Schema.Types.ObjectId, ref: "episode" },
+    },
+  ],
+  dub: [
+    {
+      _id: { type: Schema.Types.ObjectId, ref: "episode" },
+    },
+  ],
+  total_episodes: { type: Number, default: null },
+  current: { type: Number, default: null },
+};
+
+const episode_list_schema = new Schema(
   {
-    current_page: { type: Number, default: 0 },
-    total_pages: { type: Number },
-    show_id: { type: String },
+    show_id: { type: Number, required: true },
     total_episodes: { type: Number },
-    current: { type: Number },
+    latest_episode_in_database: { type: Number },
     providers: {
-      aniwatch: {
-        subbed: [{ type: Schema.Types.ObjectId, ref: "episode" }],
-        dubbed: [{ type: Schema.Types.ObjectId, ref: "episode" }],
-        total_episodees: { type: Number },
-        current: { type: Number },
-      },
-      gogoanime: {
-        subbed: [{ type: Schema.Types.ObjectId, ref: "episode" }],
-        dubbed: [{ type: Schema.Types.ObjectId, ref: "episode" }],
-        total_episodees: { type: Number },
-        current: { type: Number },
-      },
-      // add more providers later on?
+      aniwatch: provider_format,
+      gogoanime: provider_format,
+      // TODO: add more providers later on?
     },
   },
   { timestamps: true }
 );
 
-const episode = model("episode_list", episode_list);
-export default episode;
+const episode_list_model = model("episode_list", episode_list_schema);
+export default episode_list_model;

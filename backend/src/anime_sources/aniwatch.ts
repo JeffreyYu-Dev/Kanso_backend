@@ -1,13 +1,14 @@
 import ky from "ky";
 
 import { getTitle, normalizeTitle, calculateSimilarity } from "../utils/utils";
+// !important /api/v2/hianime/episode/servers?animeEpisodeId={id}
 
 interface AnimeShow {
   jname: string;
   [key: string]: any; // for other properties
 }
 
-export class aniwatchClass {
+export default class aniwatch {
   baseUrl: string = "http://localhost:4000/api/v2/hianime/";
   episodeListMetadata: any = null;
 
@@ -29,12 +30,13 @@ export class aniwatchClass {
   }
 
   // TODO: ADD DIFFERENT SERVERS AVAILABILITY AND CATEGORIES
-  async getEpisode(episodeId: string) {
-    const server = "server=hd-1";
-    const category = ["sub", "dub"];
+  async getEpisode(episodeId: string, category: string = "sub") {
+    const server = "hd-1";
 
     return ky
-      .get(`${this.baseUrl}episode/sources?animeEpisodeId=${episodeId}`)
+      .get(
+        `${this.baseUrl}episode/sources?animeEpisodeId=${episodeId}?server=${server}&category=${category}`
+      )
       .json()
       .then((res: any) => res.data);
   }

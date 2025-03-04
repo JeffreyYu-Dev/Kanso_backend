@@ -3,7 +3,6 @@ const { Schema, model } = mongoose;
 
 const episode_schema = new Schema(
   {
-    show_id: { type: Number, required: true },
     title: {
       english: { type: String, default: null },
       native: { type: String, default: null },
@@ -45,5 +44,5 @@ const episode_schema = new Schema(
   { timestamps: true }
 );
 
-const episode = model("episode", episode_schema);
-export default episode;
+const episode_model = model("episode", episode_schema);
+export default episode_model;

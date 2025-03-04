@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { assemble } from "./assemble";
 import mongoose from "./mongoDB";
+
+import assemble from "./assemble";
 
 const PORT = 9000;
 
@@ -10,60 +11,101 @@ const assembler = new assemble();
 
 app.get("/", (c) => {
   return c.json(
-    { show: "*/show/:id", episode: "*/show/:showID/episode/:episodeID" },
+    { show: "*/show/:id", episode: "*/show/:showID/episode/:episode_num" },
     200
   );
 });
 
-// async function start() {
-//   const mongoose_connection_url: string = "mongodb://127.0.0.1:27017/kanso";
+async function start() {
+  const mongoose_connection_url: string = "mongodb://127.0.0.1:27017/kanso";
 
-//   // connect to mongoose
-//   await mongoose
-//     .connect(mongoose_connection_url)
-//     .then(() => {
-//       console.log("Connected to db!");
-//     })
-//     .catch(() => {
-//       console.log(
-//         "NOT CONNECTED TO DB!!!!!!!(could be because i forgot to start mongodb oops"
-//       );
-//     });
-// }
-// start()
+  // connect to mongoose
+  await mongoose
+    .connect(mongoose_connection_url)
+    .then(() => {
+      console.log("Connected to db!");
+    })
+    .catch(() => {
+      console.log(
+        "NOT CONNECTED TO DB!!!!!!!(could be because i forgot to start mongodb oops"
+      );
+    });
+}
+start();
 
 // show route
-app.get("/show/:showId", async (c) => {
+app.get("/show/:id", async (c) => {
   // get id from uri
-  const id = c.req.param("showId");
+  const show_id = c.req.param("id");
 
   // check if id is a number
-  if (isNaN(parseInt(id))) {
+  if (isNaN(parseInt(show_id))) {
     return c.text("id is not a number");
   }
 
-  // build show
-  const data = await assembler.build_show(parseInt(id));
-
-  // return data
+  // get show
+  const data = await assembler.get_show_details(parseInt(show_id));
   return c.json(data, 200);
 });
 
-app.get("/show/:showId/episode/:episodeId", async (c) => {
-  const show_id = c.req.param("showId");
-  const episode_id = c.req.param("episodeId");
+// TODO: work in progress
+app.get("/show/:id/episode/:num", async (c) => {
+  const show_id = c.req.param("id");
+  const episode_num = c.req.param("num");
 
   // check if id is a number
-  if (isNaN(parseInt(show_id)) && isNaN(parseInt(episode_id))) {
+  if (isNaN(parseInt(show_id)) && isNaN(parseInt(episode_num))) {
     return c.text("id is not a number");
   }
 
   // build episode
-  const data = await assembler.build_episode(
-    parseInt(show_id),
-    parseInt(episode_id)
-  );
 
+  // return c.json(data, 200);
+  return c.json({ msg: "work in progess" }, 200);
+});
+
+// THIS WILL GET THE EPISODE(from one provider)
+app.get("/show/:id/episode/direct/:num", async (c) => {
+  // params
+  const show_id = parseInt(c.req.param("id"));
+  const episode_num = parseInt(c.req.param("num"));
+
+  const { provider, type } = c.req.queries();
+
+  // if no queries(required)
+  if (!provider || !type) {
+    return c.text("Must include provider and episode type queries!");
+  }
+
+  // if not number
+  if (isNaN(show_id) && isNaN(episode_num)) {
+    return c.text("NOT A NUMBER");
+  }
+
+  const data = await assembler.direct_add_episode({
+    show_id: show_id,
+    episode_num: episode_num,
+    provider: provider[0],
+    episode_type: type[0],
+  });
+
+  return c.json(data, 200);
+});
+
+// todo: fix ts
+app.get("/show/:id/list", async (c) => {
+  const show_id = c.req.param("id") || "";
+
+  // if not number
+  if (isNaN(parseInt(show_id))) {
+    return c.text("NOT A NUMBER");
+  }
+
+  const data = await assembler.get_episode_list({
+    show_id: parseInt(show_id),
+    page: 1,
+    limit: 1,
+  });
   return c.json(data, 200);
 });
 

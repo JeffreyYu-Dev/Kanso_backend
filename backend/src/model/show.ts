@@ -121,6 +121,6 @@ const show_schema = new Schema(
   { timestamps: true }
 );
 
-const show = model("show", show_schema);
+const show_model = model("show", show_schema);
 
-export default show;
+export default show_model;

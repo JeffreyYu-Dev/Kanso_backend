@@ -6,7 +6,7 @@ type headers = {
   "Content-Type": string;
 };
 
-export class kitsuClass {
+export default class kitsu {
   // VARIABLES
   baseUrl: string = "https://kitsu.io/api/edge";
   headers: headers = {

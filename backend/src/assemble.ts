@@ -1,250 +1,148 @@
-import show from "./model/show";
-import { anilistClass } from "./sources/anilist";
-import { aniwatchClass } from "./sources/aniwatch";
-import { kitsuClass } from "./sources/kitsu";
-import { cleanText, getTitle } from "./utils/utils";
+import aggregator from "./aggregator";
 
-// redis LOL
-import redis from "./redis";
+// models
+import show_model from "./model/show";
+import episode_list_model from "./model/episode_list";
+import episode_model from "./model/episode";
 
-import episode from "./model/episode";
+// TODO: add episode
+type TAdd_episode = {
+  show_id: number;
+  episode_num: number;
+  provider: string;
+  subbed: boolean;
+};
 
-// TODO: add the metadata for this page
+export default class assemble {
+  aggregator = new aggregator();
 
-//TODO: MAJOR on the main api, we need to check if shows and episodes do exist before we start building
-export class assemble {
-  anilist = new anilistClass();
-  aniwatch = new aniwatchClass();
-  kitsu = new kitsuClass();
+  // THIS SECTION WILL BUILD SHOW
+  //------------------------------------------------------------------
 
-  //   TTL calculator for episoe lists
-  private calculate_TTL_episode_list(episode_list: any[]): number {
-    // 12 hours per episode
-    const TTL_per_episode = 12 * 60;
-
-    // 60 day max
-    const MAX_TTL = 24 * 60 * 60 * 60;
-
-    // calculate total TTL for entire episode list
-    const total_TTL = episode_list.length * TTL_per_episode;
-
-    // return min time
-    return Math.min(total_TTL, MAX_TTL);
-
-    // example: 24 episode list * 12 hours_per_episode = 12 days TTL
-  }
-
-  // fetch and/or save episode list and GET KITSU data, kitsu if for individual episode data but doesn't provide streaming links
-  private async fetch_and_or_save_episode_list(show_id: number) {
-    // check if episode list is in redis
-    const res = await redis.get(`${show_id.toString()}-episode-data`);
-
-    // if not, request data and add for fast access
-    if (!res) {
-      console.log(`Fetching show ${show_id} episode data from source`);
-
-      const aniwatch_episode_list = await this.aniwatch.getEpisodeList(show_id);
-
-      // fetch kitsu data for episodes
-      const title = await getTitle(show_id);
-      const kitsu_episode_list = await this.kitsu.getEpisodeListData(title);
-
-      // combine both lists into one json string
-      const combined_list = { aniwatch_episode_list, kitsu_episode_list };
-
-      // calculate the ttl for the show
-      // probably use kitsu because it's will have all the episodes(even the ones that aren't aired yetr)
-      const TTL = this.calculate_TTL_episode_list(kitsu_episode_list);
-      await redis.set(
-        `${show_id.toString()}-episode-data`,
-        JSON.stringify(combined_list),
-        "EX",
-        TTL
-      );
-      return combined_list;
-    }
-
-    // else return data if in cache
-    console.log(`Fetching show ${show_id} episode data from cache`);
-    return JSON.parse(res);
-  }
-
-  // aggregrate all the data together for show176496
-  async build_show(show_id: number) {
-    // invoke data methods
-    const [anilist_data, aniwatch_data] = await Promise.all([
-      this.anilist.getData(show_id),
-      this.aniwatch.getData(show_id),
-    ]);
-
-    // when the show has been requested add the episode list to redis, this will increase the speed of episode fetching
-    // SLIGHT OPTIMIZATION TRICK
-    await this.fetch_and_or_save_episode_list(show_id);
-
-    // anilist values
-    const {
-      title: { english, native, romaji },
-      duration,
-      description,
-      coverImage: { color, large },
-      id,
-      idMal,
-      season,
-      siteUrl,
-      countryOfOrigin,
-      averageScore,
-      isAdult,
-      status,
-      episodes,
-      genres,
-      format,
-      seasonYear,
-      nextAiringEpisode,
-      startDate,
-      endDate,
-      recommendations,
-      studios,
-      externalLinks,
-      trailer,
-      relations,
-    } = anilist_data;
-
-    // aniwatch data
-    const { seasons } = aniwatch_data;
-
-    let current_number_of_episodes;
-
-    // REMOVE ANY UNWANTED RELATED FORMARTS
-    const related_shows = this.anilist
-      .formatRelated(relations.edges)
-      .filter((show) => show.format != "MANGA" && show.format != "NOVEL");
-
-    // calculate the # of episodes currently (this is used for airing shows)
-    if (nextAiringEpisode) {
-      current_number_of_episodes = nextAiringEpisode.episode - 1;
-    } else {
-      current_number_of_episodes = episodes;
-    }
-
-    // this is the structured data all aggregrated into one
-    return new show({
-      title: {
-        english: english,
-        native: native,
-        romaji: romaji,
-      },
-      description: cleanText(description),
-      duration: duration,
-      season_quarter: season,
-      cover_image: {
-        color: color,
-        url: large,
-      },
-      status: status,
-      rating: averageScore,
-      season_year: seasonYear,
-      format: format,
-      adult: isAdult,
-      country: countryOfOrigin,
-      start_date: startDate,
-      end_date: endDate,
-      seasons: seasons,
-      genres: genres,
-      airing_schedule: nextAiringEpisode,
-      studios: this.anilist.formatStudios(studios.edges),
-      recommendations: this.anilist
-        .formatRecommendations(recommendations.edges)
-        .slice(0, 5),
-      related: related_shows,
-      external_links: {
-        anilist: siteUrl,
-        mal: this.anilist.buildMalUrl(idMal),
-        official_site: this.anilist.getOfficialSite(externalLinks),
-        trailer: {
-          id: trailer.id,
-          site: trailer.site,
-        },
-      },
-      external_id: {
-        mal: idMal,
-        anilist: id,
-      },
-      episodes: {
-        total: episodes,
-        current: current_number_of_episodes,
-        data: {
-          aniwatch: { subbed: [], dubbed: [] },
-        },
-      },
+  async get_show_details(show_id: number) {
+    // query database for show
+    const show_res = await show_model.findOne({
+      "external_id.anilist": show_id.toString(),
     });
+
+    // if show exists return data
+    if (show_res) {
+      console.log(`getting anime ${show_id} from database `);
+      return show_res;
+    }
+
+    // get data
+    const show_data = await this.aggregator.aggregate_show(show_id);
+
+    // if there is no show data
+    if (!show_data) return null;
+
+    // if there is show data
+    // 1. save to data to database
+    await show_model.create(show_data);
+
+    return show_data;
   }
 
-  //  build episode
-  // TODO: clean description b4 it's added
-  async build_episode(show_id: number, episode_number: number) {
-    // get data on episode list (aniwatch) and kitsu episode list
-    // first check if it's in redis
+  // get the episode list from show
+  // todo: add pagination
+  async get_episode_list({
+    show_id,
+    page,
+    limit,
+  }: {
+    show_id: number;
+    page: number;
+    limit: number;
+  }) {
+    // get episode list
+    const episode_list = await episode_list_model
+      .findOne({ show_id: show_id })
+      .populate({ path: "providers.aniwatch.sub._id", model: episode_model })
+      .exec();
 
-    // if data isn't in redis we'll need to fetch it
-    const redis_res = await this.fetch_and_or_save_episode_list(show_id);
-    const { aniwatch_episode_list, kitsu_episode_list } = redis_res;
+    // if the show doesn't exist yet (so no episode list than)
+    if (!episode_list) {
+      await this.get_show_details(show_id);
+      return await episode_list_model.findOne({ show_id: show_id });
+    }
 
-    // get streaming link based on show_id and episode_number and other relavent data
+    return episode_list;
+  }
 
-    // find data on this episode (KITSU)
-    const episode_data_kitsu = kitsu_episode_list.find(
-      (episode: any) => episode.number == episode_number
-    );
+  // add episode from all providers?
+  // TODO: ts too complicated for me rn
+  // !important this function is used by the bot
+  // TODO: NOT GOOD NEEDS REWORK
+  async add_episode({ show_id, episode_num, provider, subbed }: TAdd_episode) {
+    // first we need to check if the episode exists
 
-    // find data on this episode (aniwatch)
-    const episode_data_aniwatch = aniwatch_episode_list.find(
-      (episode: any) => episode.number == episode_number
-    );
-
-    // kitsu episode data
-    const {
-      titles: kitsu_title,
-      airdate,
-      length,
-      thumbnail,
-      synopsis,
-    } = episode_data_kitsu;
-
-    // aniwatch episode data
-    const {
-      title: aniwatch_title,
-      episodeId,
-      number,
-      isFiller,
-    } = episode_data_aniwatch;
-
-    // ANIWATCH SOURCE
-    // need to pass in aniwatch episode id
-    const stream_aniwatch = await this.aniwatch.getEpisode(episodeId);
-    const { tracks, intro, outro, sources } = stream_aniwatch;
-
-    return new episode({
+    // get episode list
+    const episode_list = await this.get_episode_list({
       show_id: show_id,
-      title: {
-        english: kitsu_title?.en || kitsu_title?.en_us,
-        native: kitsu_title?.en_jp,
-        romaji: kitsu_title?.ja_jp,
-      },
-      number: number,
-      episode_id: episodeId,
-      description: cleanText(synopsis),
-      filler: isFiller,
-      air_date: airdate,
-      // TODO: fix thumbnails
-      thumbnail: thumbnail?.original || thumbnail?.large,
-      time_stamps: {
-        type: {
-          intro: intro,
-          outro: outro,
+      page: 1,
+      limit: 1,
+    });
+
+    // check latest episode stored in database
+    // TODO: im not really sure what to do here, since episode list will for sure exist
+    if (!episode_list) return null;
+
+    // check if latest_episode_in_database is not null
+    // null means there have been no episodes added
+    if (!episode_list.latest_episode_in_database) return "no episodes";
+
+    // if episode is in database already
+    if (episode_list.latest_episode_in_database <= episode_num)
+      return "episode in database";
+
+    //add episode now
+
+    // we need to know if all providers have the episode of the subbed and dubbed version
+  }
+
+  // get dubbed or subbed episode from show from specific provider
+  // TODO: check if episode is in database already
+  async direct_add_episode(params: {
+    show_id: number;
+    episode_num: number;
+    provider: string;
+    episode_type: string;
+  }) {
+    // check if episode exists
+    // const episode_in_database = await episode.find()
+
+    const episode: any = await this.aggregator.get_direct_episode(params);
+
+    // TODO: FIX THIS
+    // // update episode count
+    // const currentList = await episode_list_model.findOne({ params.show_id });
+    // const currentLatest = currentList?.latest_episode_in_database || 0;
+
+    // add episode to episode collection
+    await episode_model.create(episode);
+
+    // add episode to show's episode list
+    await episode_list_model.findOneAndUpdate(
+      { show_id: params.show_id },
+      {
+        // $set: {
+
+        // },
+        $set: {
+          // latest_episode_in_database: Math.max(currentLatest, params.episode_num),
+          // [`providers.${params.provider}.total_episodes`]: Math.max(
+          //   currentLatest,
+          //   params.episode_num
+          // ),
+          [`providers.${params.provider}.${params.episode_type}`]: {
+            _id: episode._id,
+          },
         },
       },
-      stream_links: sources,
-      subtitle_links: tracks,
-    });
+      { new: true }
+    );
+
+    return episode;
   }
 }

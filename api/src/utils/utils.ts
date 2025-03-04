@@ -1,5 +1,3 @@
-import ky from "ky";
-
 const date = new Date();
 
 export function getCurrentYear() {

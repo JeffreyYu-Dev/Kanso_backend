@@ -125,7 +125,7 @@ type recommendations = {
   };
 };
 
-export class anilistClass {
+export default class anilist {
   async getData(id: number) {
     const data = await ky
       .post("https://graphql.anilist.co", {
