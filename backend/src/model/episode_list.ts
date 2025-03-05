@@ -2,16 +2,8 @@ import mongoose from "mongoose";
 const { Schema, model } = mongoose;
 
 const provider_format = {
-  sub: [
-    {
-      _id: { type: Schema.Types.ObjectId, ref: "episode" },
-    },
-  ],
-  dub: [
-    {
-      _id: { type: Schema.Types.ObjectId, ref: "episode" },
-    },
-  ],
+  sub: [{ type: Schema.Types.ObjectId, ref: "episode" }],
+  dub: [{ type: Schema.Types.ObjectId, ref: "episode" }],
   total_episodes: { type: Number, default: null },
   current: { type: Number, default: null },
 };

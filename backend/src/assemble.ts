@@ -13,6 +13,23 @@ type TAdd_episode = {
   subbed: boolean;
 };
 
+type TEpisode_list = {
+  show_id: number;
+  total_episodes: number;
+  latest_episodes_in_database: number;
+  [key: string]: unknown;
+  providers: {
+    aniwatch: {
+      sub: string[];
+      dub: string[];
+    };
+    gogoanime: {
+      sub: string[];
+      dub: string[];
+    };
+  };
+};
+
 export default class assemble {
   aggregator = new aggregator();
 
@@ -55,10 +72,15 @@ export default class assemble {
     page: number;
     limit: number;
   }) {
-    // get episode list
     const episode_list = await episode_list_model
       .findOne({ show_id: show_id })
-      .populate({ path: "providers.aniwatch.sub._id", model: episode_model })
+      .populate({
+        path: "providers.aniwatch.sub",
+        model: episode_model,
+        options: {
+          sort: { number: 1 }, // Sort the populated episodes by number in descending order
+        },
+      })
       .exec();
 
     // if the show doesn't exist yet (so no episode list than)
@@ -103,53 +125,59 @@ export default class assemble {
 
   // get dubbed or subbed episode from show from specific provider
   // TODO: check if episode is in database already
-  async direct_add_episode(params: {
+  async directly_add_episode(params: {
     show_id: number;
     episode_num: number;
     provider: string;
     episode_type: string;
   }) {
     // check if episode exists
-    // const episode_in_database = await episode.find()
+    const episode_list: any = await this.get_episode_list({
+      show_id: params.show_id,
+      page: 1,
+      limit: 1,
+    });
+
+    const episode_ = episode_list.providers[params.provider][
+      params.episode_type
+    ].find((episode: any) => episode.number == params.episode_num);
+
+    if (episode_) {
+      if (episode_.number == params.episode_num) {
+        console.log("EPISODE IS ALREADY ADDED");
+        return episode_;
+      }
+    }
 
     // first check if we have show
-    const show = show_model.findOne({ "external_id.anilist": params.show_id });
+    const show_res = show_model.findOne({
+      "external_id.anilist": params.show_id,
+    });
 
     // build show if it doesn't exist
-    if (!show) await this.aggregator.aggregate_show(params.show_id);
+    if (!show_res) await this.aggregator.aggregate_show(params.show_id);
 
-    // then add episode
-    const episode: any = await this.aggregator.get_direct_episode(params);
+    // then get episode
+    const aggregated_episode: any = await this.aggregator.get_direct_episode(
+      params
+    );
 
     // TODO: FIX THIS
-    // // update episode count
-    // const currentList = await episode_list_model.findOne({ params.show_id });
-    // const currentLatest = currentList?.latest_episode_in_database || 0;
-
-    // add episode to episode collection
-    await episode_model.create(episode);
+    // TODO: work on episode total and currnet
+    await episode_model.create(aggregated_episode);
 
     // add episode to show's episode list
     await episode_list_model.findOneAndUpdate(
       { show_id: params.show_id },
       {
-        // $set: {
-
-        // },
-        $set: {
-          // latest_episode_in_database: Math.max(currentLatest, params.episode_num),
-          // [`providers.${params.provider}.total_episodes`]: Math.max(
-          //   currentLatest,
-          //   params.episode_num
-          // ),
-          [`providers.${params.provider}.${params.episode_type}`]: {
-            _id: episode._id,
-          },
+        $addToSet: {
+          [`providers.${params.provider}.${params.episode_type}`]:
+            aggregated_episode._id,
         },
       },
       { new: true }
     );
 
-    return episode;
+    return aggregated_episode;
   }
 }

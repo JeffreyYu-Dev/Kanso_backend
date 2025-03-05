@@ -82,7 +82,7 @@ app.get("/show/:id/episode/direct/:num", async (c) => {
     return c.text("NOT A NUMBER");
   }
 
-  const data = await assembler.direct_add_episode({
+  const data = await assembler.directly_add_episode({
     show_id: show_id,
     episode_num: episode_num,
     provider: provider[0],
